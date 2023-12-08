@@ -1,0 +1,141 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+name: ondemand
+title: Open OnDemand
+version: "3.0.3"
+summary: Provide remote web access to supercomputers
+description: >
+  Open OnDemand empowers students, researchers, and industry professionals
+  with remote web access to supercomputers, high-performance computing
+  clusters, and computational grids.
+license: MIT
+website: "https://openondemand.org"
+
+base: core22
+grade: devel
+confinement: classic
+
+apps:
+  ondemand:
+    command: httpd.wrapper -k start -DFOREGROUND
+    stop-command: httpd.wrapper -k graceful-stop
+    restart-condition: on-abort
+    install-mode: disable
+    daemon: simple
+
+parts:
+  apache:
+    plugin: nil
+    build-attributes:
+      - enable-patchelf
+    build-packages:
+      - libapr1-dev
+      - libaprutil1-dev
+      - libssl-dev
+      - libpcre3-dev
+      - libcjose-dev
+      - libjansson-dev
+      - libcurl4-openssl-dev
+      - perl
+    stage-packages:
+      - libapr1
+      - libaprutil1
+      - libssl3
+      - libpcre3
+      - libcjose0
+      - libjansson4
+      - libcurl4
+      - perl
+    override-build: |
+      craftctl default
+      
+      set -e
+      # Build httpd (apache2)
+      curl -fsSL -o - \
+        https://dlcdn.apache.org/httpd/httpd-2.4.58.tar.gz | \
+        tar -xzf -
+      cd httpd-2.4.58
+      ./configure \
+        --prefix=${CRAFT_PART_INSTALL} \
+        --with-mpm=event \
+        --enable-modules=none \
+        --enable-mods-shared='headers proxy proxy_fcgi setenvif env rewrite mime dir authz_core unixd alias ssl socache_shmcb' \
+        ENABLED_DSO_MODULES='headers proxy proxy_fcgi setenvif env rewrite mime dir authz_core unixd alias ssl socache_shmcb'
+      make
+      make install
+      cd ..
+      rm -rf httpd-2.4.58
+      
+      # Build httpd openidc extension module
+      curl -fsSL -o - \
+        https://github.com/OpenIDC/mod_auth_openidc/releases/download/v2.4.14.4/mod_auth_openidc-2.4.14.4.tar.gz | \
+        tar -xzf -
+      cd mod_auth_openidc-2.4.14.4
+      ./configure \
+        --prefix=${CRAFT_PART_INSTALL} \
+        --with-apxs=${CRAFT_PART_INSTALL}/bin/apxs
+      make
+      make install
+      cd ..
+      rm -rf mod_auth_openidc-2.4.14.4
+
+  apache-overlay:
+    after:
+      - apache
+    plugin: dump
+    source: overlays/apache
+    organize:
+      "overlays/apache/conf/*": conf/
+      "overlays/apache/bin/*": bin/
+
+  ondemand:
+    after:
+      - apache
+    plugin: nil
+    build-attributes:
+      - enable-patchelf
+    source: "https://github.com/osc/ondemand.git"
+    source-tag: v${SNAPCRAFT_PROJECT_VERSION}
+    build-packages:
+      - build-essential
+      - curl
+      - tzdata
+      - libxml2-dev
+      - libxslt-dev
+      - pkg-config
+      - zlib1g-dev
+      - liblzma-dev
+      - sqlite3
+      - libsqlite3-dev
+      - python3
+      - ruby
+      - ruby-dev
+      - ruby-bundler
+      - rake
+    build-snaps:
+      - node/20/stable
+    stage-packages:
+      - nginx-full
+      - passenger
+      - file
+      - lua-posix
+      - lsof
+      - ruby
+    stage-snaps:
+      - node/20/stable
+    override-build: |
+      craftctl default
+
+      set -e
+      # Build Open OnDemand using Rake and the Ruby bundler
+      BUNDLE_WITHOUT='test package' bundle install
+      rake --trace -mj$(nproc) build
+      rm -rf gems/
+      rm -rf apps/*/node_modules/.cache
+    override-stage: |
+      craftctl default
+
+      set -e
+      # TODO: Stage Open OnDemand configuration files.
+      # Should identify mechanism that allows me to update data live.
