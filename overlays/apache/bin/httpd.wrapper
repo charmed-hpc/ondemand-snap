@@ -1,8 +1,0 @@
-#!/bin/sh -e
-# Copyright 2023 Canonical Ltd.
-# See LICENSE file for licensing details.
-
-# TODO: Add bit that evaluates if we are starting.
-#   If we do start, ensure to run the portal generator.
-
-httpd -d "$SNAP" "$@"
