@@ -93,18 +93,7 @@ parts:
       rm -rf apps/*/node_modules/.cache
 
       # Install Open OnDemand.
-      # export OOD_ROOT=${CRAFT_PART_INSTALL}/opt/ood
-      # mkdir -p ${OOD_ROOT}
       PREFIX=${CRAFT_PART_INSTALL} rake --trace install
-      # mkdir -p ${OOD_ROOT}/gems
-      # mv ${GEM_HOME}/* ${OOD_ROOT}/gems
-      #rmdir ${GEM_HOME}
-      # export OOD_ROOT=${CRAFT_PART_INSTALL}/opt/ood
-      # mkdir -p ${OOD_ROOT}
-      # PREFIX=${OOD_ROOT} rake --trace install
-      # mkdir -p ${OOD_ROOT}/gems
-      # mv ${GEM_HOME}/* ${OOD_ROOT}/gems
-      # rmdir ${GEM_HOME}
 
   apache:
     # yamllint disable-line rule:line-length
@@ -306,6 +295,14 @@ parts:
     plugin: dump
     organize:
       "overlays/ondemand/sbin/*": sbin/
+      "overlays/ondemand/templates/*": templates/
+    override-prime: |
+      craftctl default
+      
+      set -e
+      # Copy custom `no-auth` ERB template into `ood-portal-generator`.
+      cp -a templates/no-auth.conf.erb ood-portal-generator/templates/no-auth.conf.erb
+      rm -rf templates
 
   snap-hooks:
     source: .
