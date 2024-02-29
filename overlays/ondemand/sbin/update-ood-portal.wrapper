@@ -17,5 +17,5 @@ export APACHE=${SNAP_COMMON}/etc/apache2/conf.d/ood-portal.conf
 export DEX_CONFIG=${SNAP_COMMON}/etc/ood/dex/config.yaml
 export SUM=${SNAP_COMMON}/etc/ood/config/ood-portal.sha256sum
 
-# TODO: Copy template over from templates/ood_portal.yml.
-"${SNAP}"/ood-portal-generator/sbin/update_ood_portal "$@"
+"${SNAP}"/ood-portal-generator/sbin/update_ood_portal \
+  -c "${SNAP_COMMON}"/etc/config/ood/ood_portal.yaml "$@"
