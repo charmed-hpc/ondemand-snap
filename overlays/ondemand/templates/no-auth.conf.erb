@@ -9,7 +9,7 @@
 
   # Only public assets enabled in this mode.
   # If you're reading this message you need to setup authentication: https://osc.github.io/ood-documentation/latest/authentication.html
-  <%- @public_uri && @public_root -%>
+  <%- if @public_uri && @public_root -%>
   Alias "<%= @public_uri %>" "<%= @public_root %>"
   <Directory "<%= @public_root %>">
     Options FollowSymLinks
