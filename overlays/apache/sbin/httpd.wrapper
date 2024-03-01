@@ -13,4 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Generate new ood-portal.conf before starting the `httpd` service.
+"${SNAP}"/sbin/update-ood-portal.wrapper
+
+# Start `apache2` service.
 "${SNAP}"/bin/httpd -d "${SNAP}" "$@"
