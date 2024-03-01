@@ -18,4 +18,4 @@ export DEX_CONFIG=${SNAP_COMMON}/etc/ood/dex/config.yaml
 export SUM=${SNAP_COMMON}/etc/ood/config/ood-portal.sha256sum
 
 "${SNAP}"/ood-portal-generator/sbin/update_ood_portal \
-  -c "${SNAP_COMMON}"/etc/config/ood/ood_portal.yaml "$@"
+  -c "${SNAP_COMMON}"/etc/ood/config/ood_portal.yaml "$@"
