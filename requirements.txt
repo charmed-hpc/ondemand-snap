@@ -1,1 +1,2 @@
+ondemandutils>=0.1.0
 snap-helpers==0.4.2
