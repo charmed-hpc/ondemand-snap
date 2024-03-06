@@ -79,6 +79,9 @@ parts:
       - ruby
     stage-snaps:
       - node/20/stable
+    stage:
+      - -nginx_stage/share/nginx_stage_example.yml
+      - -ood-portal-generator/share/ood_portal_example.yml
     override-build: |
       craftctl default
 
@@ -94,6 +97,9 @@ parts:
 
       # Install Open OnDemand.
       PREFIX=${CRAFT_PART_INSTALL} rake --trace install
+      
+      # Create `VERSION` file required by several Open OnDemand utilities.
+      echo ${SNAPCRAFT_PROJECT_VERSION} > ${CRAFT_PART_INSTALL}/VERSION
 
   apache:
     # yamllint disable-line rule:line-length
