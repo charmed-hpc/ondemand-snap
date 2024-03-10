@@ -22,6 +22,7 @@ include = ["ondemandhelpers"]
 # Hook configuration for ondemandhelpers utility.
 [project.entry-points."snaphelpers.hooks"]
 install = "ondemandhelpers.hooks:install"
+configure = "ondemandhelpers.hooks:configure"
 
 # Testing tools configuration
 [tool.coverage.run]
