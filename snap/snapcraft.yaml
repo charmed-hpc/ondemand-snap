@@ -28,11 +28,14 @@ grade: devel
 confinement: classic
 compression: lzo
 environment:
+  # yamllint disable rule:line-length
   # Need this PATH declaration so that the Python-based
   # snap hooks can find the embedded Python interpreter with
   # the necessary dependencies packaged in `site-packages`.
-  # yamllint disable-line rule:line-length
   PATH: $SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$SNAP/usr/local/bin:$SNAP/usr/local/sbin:$PATH
+  GEM_PATH: $SNAP/gems:$SNAP/usr/lib/ruby/gems:$SNAP/usr/share/rubygems-integration/all/gems:$SNAP/var/lib/gems
+  RUBYLIB: $SNAP/usr/lib/ruby/3.0.0:$SNAP/usr/lib/ruby/gems/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/3.0.0:$SNAP/usr/lib/ruby/vendor_ruby/3.0.0:$SNAP/gems/extensions/x86_64-linux/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/vendor_ruby/3.0.0:$SNAP/var/lib/gems/3.0.0:$SNAP/opt/passenger/lib/ruby/3.0.0
+  # yamllint enable rule:line-length
 system-usernames:
   snap_daemon: shared
 
