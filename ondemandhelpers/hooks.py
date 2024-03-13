@@ -20,7 +20,7 @@ import shutil
 from snaphelpers import Snap
 
 from .log import setup_logging
-from .models import NginxStage, OODPortal
+from .models import NginxStage, OODPortal, Raw
 
 
 def _setup_dirs(snap: Snap) -> None:
@@ -98,3 +98,14 @@ def install(snap: Snap) -> None:
     logging.info("Generating default `nginx_stage.yml` configuration file.")
     nginx_stage.generate_config()
 
+
+def configure(snap: Snap) -> None:
+    """Configure hook for the Open OnDemand snap."""
+    setup_logging(snap.paths.common / "hooks.log")
+    logging.info("Executing snap `configure` hook.")
+    options = snap.config.get_options("raw")
+
+    if "raw" in options:
+        logging.info("Updating Open OnDemand snap configuration.")
+        raw = Raw(snap)
+        raw.update_config(options["raw"])

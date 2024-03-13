@@ -14,11 +14,43 @@
 
 """Models for managing lifecycle operations inside the Open OnDemand snap."""
 
-from abc import ABC
+import json
+import logging
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List
 
 from ondemandutils.editors import nginx_stage, ood_portal
 from ondemandutils.models import NginxStageConfig, OODPortalConfig
 from snaphelpers import Snap
+
+
+def _prefilter(config: Dict[str, Any]):
+    """Filter dictionary keys with bars `-` and convert them to underscores `_`.
+
+    Args:
+        config: Dictionary to filter bar characters out of configuration keys.
+    """
+    filtered = {}
+    for k, v in config.items():
+        if "-" not in k:
+            continue
+
+        k = k.replace("-", "_")
+        if isinstance(v, dict):
+            filtered[k] = _prefilter(v)
+        elif isinstance(v, list):
+            holder = []
+            for i in v:
+                if isinstance(i, dict):
+                    holder.append(_prefilter(i))
+                else:
+                    holder.append(i)
+
+            filtered[k] = holder
+        else:
+            filtered[k] = v
+
+    return filtered
 
 
 class _BaseModel(ABC):
@@ -27,15 +59,38 @@ class _BaseModel(ABC):
     def __init__(self, snap: Snap) -> None:
         self._snap = snap
 
+    def _needs_restart(self, services: List[str]) -> None:
+        """Determine if service(s) need to be restarted to apply latest configuration.
+
+        Args:
+            services: List of services to check status of. If the service is active,
+                log that the service needs to be restarted.
+        """
+        for service in services:
+            if self._snap.services.list()[service].active:
+                logging.info(
+                    "Service `%s` must be restarted to apply latest configuration changes.",
+                    service,
+                )
+
+    @abstractmethod
+    def update_config(self, config: Dict[str, str]) -> None:  # pragma: no cover
+        """Update configuration specific to the service.
+
+        Every model must have this method as it will be used
+        to process configuration retrieved via `snapctl`. This
+        method makes it easier to do unit tests on the hooks
+        since each method can be tested individually.
+        """
+        raise NotImplementedError
+
 
 class OODPortal(_BaseModel):
     """Manage lifecycle operations for the Open OnDemand portal."""
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
-        self._ood_portal_file = (
-            self._snap.paths.common / "etc" / "ood" / "config" / "ood_portal.yaml"
-        )
+        self.config_file = self._snap.paths.common / "etc" / "ood" / "config" / "ood_portal.yaml"
 
     def generate_config(self) -> None:
         """Generate a default `ood_portal.yml` configuration file.
@@ -104,8 +159,24 @@ class OODPortal(_BaseModel):
                 "dex": None,  # Disable Dex configuration generation.
             }
         )
-        ood_portal.dump(config, self._ood_portal_file)
-        self._ood_portal_file.chmod(0o600)
+        ood_portal.dump(config, self.config_file)
+        self.config_file.chmod(0o600)
+
+    def update_config(self, config: Dict[str, Any], prefilter: bool = False) -> None:
+        """Update configuration for the Open OnDemand portal interface."""
+        if prefilter:
+            config = _prefilter(config)
+
+        new_config = OODPortalConfig.from_dict(config)
+        old_config = ood_portal.load(self.config_file)
+        new_config |= old_config
+        if new_config == old_config:
+            logging.debug("No change in portal configuration. Not updating.")
+            return
+
+        logging.info("Updating portal configuration file %s.", self.config_file)
+        ood_portal.dump(new_config, self.config_file)
+        self._needs_restart(["ondemand"])
 
 
 class NginxStage(_BaseModel):
@@ -113,9 +184,7 @@ class NginxStage(_BaseModel):
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
-        self._nginx_stage_file = (
-            self._snap.paths.common / "etc" / "ood" / "config" / "nginx_stage.yaml"
-        )
+        self.config_file = self._snap.paths.common / "etc" / "ood" / "config" / "nginx_stage.yaml"
 
     def generate_config(self) -> None:
         """Generate a default `nginx_stage.yml` configuration file.
@@ -124,5 +193,50 @@ class NginxStage(_BaseModel):
         """
         # TODO: Need to define further data models for nginx_stage.
         config = NginxStageConfig.from_dict({})
-        nginx_stage.dump(config, self._nginx_stage_file)
-        self._nginx_stage_file.chmod(0o644)
+        nginx_stage.dump(config, self.config_file)
+        self.config_file.chmod(0o644)
+
+    def update_config(self, config: Dict[str, Any], prefilter: bool = False) -> None:
+        """Update configuration for the `nginx_stage` utility."""
+        if prefilter:
+            config = _prefilter(config)
+
+        new_config = NginxStageConfig.from_dict(config)
+        old_config = nginx_stage.load(self.config_file)
+        new_config |= old_config
+        if new_config == old_config:
+            logging.debug("No change in `nginx_stage` configuration. Not updating.")
+            return
+
+        logging.info("Updating `nginx_stage` configuration file %s.", self.config_file)
+        nginx_stage.dump(new_config, self.config_file)
+
+
+class Raw(_BaseModel):
+    """Manage snap configuration using raw JSON objects.
+
+    JSON object must map to a pre-existing data model inside the snap.
+    An `AttributeError` will be raised if the JSON object contains
+    any bad configuration values; a lint is performed on the passed configuration
+    before any configuration inside the snap is updated.
+    """
+
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+        self._ood_portal = OODPortal(*args)
+        self._nginx_stage = NginxStage(*args)
+
+    def update_config(self, config: Dict[str, str]) -> None:
+        """Update snap configuration using a JSON object."""
+        if "portal" in config:
+            logging.info(config["portal"])
+            logging.info(type(config["portal"]))
+            # TODO: Data is read in as a dict. No JSON parsing required.
+            #   Update tomorrow to ingest configuration as dict without
+            #   the JSON parsing.
+            portal_config = json.loads(config["portal"])
+            self._ood_portal.update_config(portal_config)
+
+        if "nginx-stage" in config:
+            nginx_stage_config = json.loads(config["nginx-stage"])
+            self._nginx_stage.update_config(nginx_stage_config)
