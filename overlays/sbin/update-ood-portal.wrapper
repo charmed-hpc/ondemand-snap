@@ -13,9 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-export APACHE=${SNAP_COMMON}/etc/apache2/conf.d/ood-portal.conf
-export DEX_CONFIG=${SNAP_COMMON}/etc/ood/dex/config.yaml
-export SUM=${SNAP_COMMON}/etc/ood/config/ood-portal.sha256sum
-
-"${SNAP}"/ood-portal-generator/sbin/update_ood_portal \
-  -c "${SNAP_COMMON}"/etc/ood/config/ood_portal.yaml "$@"
+"${SNAP}"/bin/generate-ood-portal \
+  --output "${SNAP_COMMON}"/etc/apache2/conf.d/ood-portal.conf \
+  "${SNAP_COMMON}"/etc/ood/config/ood_portal.yaml

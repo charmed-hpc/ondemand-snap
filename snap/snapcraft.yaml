@@ -84,7 +84,7 @@ parts:
       - node/20/stable
     stage:
       - -nginx_stage/share/nginx_stage_example.yml
-      - -ood-portal-generator/share/ood_portal_example.yml
+      - -ood-portal-generator  # Replaced by `generate-ood-portal`.
     override-build: |
       craftctl default
 
@@ -292,26 +292,26 @@ parts:
       cp -a pkg/fakeroot/* ${CRAFT_PART_INSTALL}/opt/passenger
     # yamllint enable rule:line-length
 
-  apache-overlay:
-    source: overlays/apache
-    plugin: dump
-    organize:
-      "overlays/apache/conf/*": conf/
-      "overlays/apache/sbin/*": sbin/
-
   ondemand-overlay:
-    source: overlays/ondemand
+    source: overlays
     plugin: dump
     organize:
-      "overlays/ondemand/sbin/*": sbin/
-      "overlays/ondemand/templates/*": templates/
-    override-prime: |
-      craftctl default
-      
-      set -e
-      # Copy custom `no-auth` ERB template into `ood-portal-generator`.
-      cp -a templates/no-auth.conf.erb ood-portal-generator/templates/no-auth.conf.erb
-      rm -rf templates
+      "overlays/conf/*": conf/
+      "overlays/sbin/*": sbin/
+      "overlays/templates/*": templates/
+
+  # Replace `update_ood_portal` with `generate-ood-portal` binary.
+  #
+  # `generate-ood-portal` renders an apache2 configuration file
+  # for the Open OnDemand portal using `ood_portal.yml`.
+  # `generate-ood-portal` is "simpler" than `update_ood_portal`
+  # as it just renders an apache2 configuration file. It should
+  # be considered a lower-level utility compared to `update_ood_portal`
+  ood-portal-generator:
+    source: "https://github.com/charmed-hpc/ood-portal-generator.git"
+    plugin: go
+    build-snaps:
+      - go/1.22/stable
 
   snap-hooks:
     source: .
