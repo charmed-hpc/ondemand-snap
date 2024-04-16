@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/assets/ood-logo.png">
+<img src=".github/assets/ood-logo.png"><br><br>
 
 A [snap](https://snapcraft.io/about) package for [Open OnDemand](https://openondemand.org) - 
 an interactive web-based interface for seamlessly accessing your supercomputing
