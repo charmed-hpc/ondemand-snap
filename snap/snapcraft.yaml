@@ -157,9 +157,10 @@ parts:
       cd httpd-2.4.58 && ./configure \
         --prefix=${CRAFT_PART_INSTALL} \
         --enable-pie \
-        --enable-modules=none \
         --enable-mpm=event \
-        --enable-mods-static="access_compat alias auth_basic filter authn_core authn_file authz_core authz_host authz_user autoindex deflate dir env headers log_config logio lua mime negotiation proxy proxy_http proxy_wstunnel reqtimeout rewrite setenvif slotmem_shm ssl status unixd version"
+        --enable-modules=none \
+        --enable-mods-static="http log_config logio unixd version watchdog" \
+        --enable-mods-shared="access_compat alias auth_basic authn_core authn_file authz_core authz_host authz_user autoindex deflate dir env filter headers lua mime negotiation proxy proxy_http proxy_wstunnel reqtimeout rewrite setenvif ssl status"
       make -j${CRAFT_PARALLEL_BUILD_COUNT} && make install && cd ..
       
       # Build and install `apache2` OpenIDC module.
