@@ -35,6 +35,8 @@ environment:
   PATH: $SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$SNAP/usr/local/bin:$SNAP/usr/local/sbin:$PATH
   GEM_PATH: $SNAP/gems:$SNAP/usr/lib/ruby/gems:$SNAP/usr/share/rubygems-integration/all/gems:$SNAP/var/lib/gems
   RUBYLIB: $SNAP/usr/lib/ruby/3.0.0:$SNAP/usr/lib/ruby/gems/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/3.0.0:$SNAP/usr/lib/ruby/vendor_ruby/3.0.0:$SNAP/gems/extensions/x86_64-linux/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/vendor_ruby/3.0.0:$SNAP/var/lib/gems/3.0.0:$SNAP/opt/passenger/lib/ruby/3.0.0
+  LUA_PATH: $SNAP/usr/share/lua/5.3/?.lua;$SNAP/usr/share/lua/5.3/?/init.lua;;
+  LUA_CPATH: $SNAP/usr/lib/x86_64-linux-gnu/lua/5.3/?.so;$SNAP/usr/lib/lua/5.3/?.so;;
   # yamllint enable rule:line-length
 system-usernames:
   snap_daemon: shared
@@ -122,7 +124,7 @@ parts:
       - libjansson-dev
       - libcurl4-openssl-dev
       - libnghttp2-dev
-      - liblua5.4-dev
+      - liblua5.3-dev
     stage-packages:
       - libapr1-dev  # Provides apr-1-config binary required by `apxs`.
       - libaprutil1-dev  # Provides apu-1-config binary required by `apxs`.
@@ -132,7 +134,7 @@ parts:
       - libjansson4
       - libcurl4
       - libnghttp2-14
-      - liblua5.4-0
+      - liblua5.3-0
     stage:
       - -man
       - -manual
