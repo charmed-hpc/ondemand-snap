@@ -13,6 +13,7 @@ snap/.snapcraft
 
 # IDE specifics
 .idea
+.vscode
 
 # Python specifics
 # Byte-compiled / optimized / DLL files
