@@ -16,5 +16,5 @@
 # Generate new ood-portal.conf before starting the `httpd` service.
 "${SNAP}"/sbin/update-ood-portal.wrapper
 
-# Start `apache2` service.
-"${SNAP}"/bin/httpd -d "${SNAP}" "$@"
+# Start `httpd` service.
+"${SNAP}"/httpd/bin/httpd -d "${SNAP}/httpd" "$@"

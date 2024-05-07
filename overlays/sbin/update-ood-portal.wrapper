@@ -14,5 +14,5 @@
 # limitations under the License.
 
 "${SNAP}"/bin/generate-ood-portal \
-  --output "${SNAP_COMMON}"/etc/apache2/conf.d/ood-portal.conf \
-  "${SNAP_COMMON}"/etc/ood/config/ood_portal.yaml
+  --output "${SNAP_COMMON}"/etc/httpd/conf.d/ood-portal.conf \
+  "${SNAP_COMMON}"/etc/ondemand/ood-portal.yaml
