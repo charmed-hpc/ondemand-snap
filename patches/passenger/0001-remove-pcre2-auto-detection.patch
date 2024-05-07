@@ -1,0 +1,123 @@
+From 52d8fb74fc620b75f2eda54f185e9f04b435a634 Mon Sep 17 00:00:00 2001
+From: "Jason C. Nucciarone" <nuccitheboss@ubuntu.com>
+Date: Mon, 6 May 2024 15:08:16 -0400
+Subject: [PATCH] feat!: Remove PCRE2 auto-detection
+
+BREAKING CHANGE: Removes PCRE2 auto-detection mechanism from installation
+script `passenger-install-nginx-module`. Removed because the auto-detection
+is not snap-aware, so it will not find the PCRE2 available within the snap.
+
+If this installation script cannot find PCRE2, it will deactivate the
+ngx_http_rewrite_module which we need for Open OnDemand. Now it won't
+shut off the http_rewrite module, but now we must explicity declare
+if we want the module enabled or not using `--with-pcre` or
+`--without-http_rewrite_module`.
+
+Signed-off-by: Jason C. Nucciarone <nuccitheboss@ubuntu.com>
+---
+ bin/passenger-install-nginx-module | 70 ------------------------------
+ 1 file changed, 70 deletions(-)
+
+diff --git a/bin/passenger-install-nginx-module b/bin/passenger-install-nginx-module
+index 3439444..e214c47 100755
+--- a/bin/passenger-install-nginx-module
++++ b/bin/passenger-install-nginx-module
+@@ -102,11 +102,6 @@ class Installer < PhusionPassenger::AbstractInstaller
+     check_whether_system_has_enough_ram
+ 
+     download_and_install = should_we_download_and_install_nginx_automatically?
+-    if pcre_is_installed?
+-      @pcre_source_dir = nil
+-    else
+-      @pcre_source_dir = download_and_extract_pcre
+-    end
+     if download_and_install
+       nginx_source_dir = download_and_extract_nginx
+       if nginx_source_dir.nil?
+@@ -258,44 +253,6 @@ private
+     end
+   end
+ 
+-  def download_and_extract_pcre
+-    new_screen
+-    puts "<banner>PCRE (required by Nginx) not installed, downloading it...</banner>"
+-
+-    url = "https://ftp.pcre.org/pub/pcre/pcre-#{PREFERRED_PCRE_VERSION}.tar.gz"
+-    dirname = "pcre-#{PREFERRED_PCRE_VERSION}"
+-    tarball = "#{@working_dir}/pcre.tar.gz"
+-
+-    if download(url, tarball, DOWNLOAD_OPTION)
+-      Dir.chdir(@working_dir) do
+-        puts "<banner>Verifying PCRE checksum...</banner>"
+-        if sha256_file(tarball) != PCRE_SHA256_CHECKSUM
+-          new_screen
+-          render_template "nginx/pcre_checksum_could_not_be_verified"
+-          wait
+-          return nil
+-        end
+-
+-        puts "<banner>Extracting PCRE source tarball...</banner>"
+-        if sh("tar", "xzvf", tarball)
+-          return "#{@working_dir}/#{dirname}"
+-        else
+-          new_screen
+-          render_template "nginx/pcre_could_not_be_extracted"
+-          wait
+-          return nil
+-        end
+-      end
+-    else
+-      new_screen
+-      render_template "nginx/pcre_could_not_be_downloaded"
+-      wait
+-      return nil
+-    end
+-  rescue Interrupt
+-    exit 2
+-  end
+-
+   def download_and_extract_nginx
+     new_screen
+     puts "<banner>Downloading Nginx...</banner>"
+@@ -548,38 +505,11 @@ private
+     command << "--with-http_addition_module "
+     command << "--with-cc-opt=#{Shellwords.escape extra_cflags} "
+     command << "--with-ld-opt=#{Shellwords.escape extra_ldflags} "
+-    if @pcre_source_dir
+-      command << "--with-pcre='#{@pcre_source_dir}' "
+-    elsif !pcre_is_installed?
+-      command << "--without-http_rewrite_module "
+-    end
+     command << "--add-module='#{PhusionPassenger.nginx_module_source_dir}' #{extra_configure_flags}"
+     command.strip!
+     return command
+   end
+ 
+-  def pcre_is_installed?
+-    if @pcre_is_installed.nil?
+-      Dir.mktmpdir do |safe_tmpdir|
+-        @pcre_is_installed = begin
+-          File.open("#{safe_tmpdir}/passenger-check.c", 'w') do |f|
+-            f.puts("#include <pcre.h>")
+-          end
+-          Dir.chdir("#{safe_tmpdir}") do
+-            # Nginx checks for PCRE in multiple places...
+-            system("(gcc -I/usr/local/include -I/usr/include/pcre " <<
+-              "-I/usr/pkg/include -I/opt/local/include " <<
+-              "-c passenger-check.c) >/dev/null 2>/dev/null")
+-          end
+-        ensure
+-          File.unlink("#{safe_tmpdir}/passenger-check.c") rescue nil
+-          File.unlink("#{safe_tmpdir}/passenger-check.o") rescue nil
+-        end
+-      end
+-    end
+-    return @pcre_is_installed
+-  end
+-
+   def sha256_file(path)
+     # We do this instead of using #file, for Ruby 1.8.5 support.
+     digest = Digest::SHA256.new
+-- 
+2.40.1
+
