@@ -16,12 +16,14 @@
 local posix = require("posix")
 local snap = require("snap")
 
-local logger = require("ondemand.logging")
-local fileutil = require("ondemand.fileutil")
 local portal = require("ondemand.portal")
 local nginx_stage = require("ondemand.nginx-stage")
+local fileutil = require("ondemand.utils.fileutil")
+local logger = require("ondemand.utils.logging")
 
---- Stage `ondemand` snap resources so that it is ready to go for the first start.
+--- Stage `ondemand` snap resources so that the `ondemand` service is ready to start.
+--- Without any additional configuration, the administrator will be
+--- taken to the `need_auth.html` page.
 local function stage()
   -- Provision required directories for `ondemand` snap.
   local etc = snap.paths.common .. "/etc"
@@ -60,7 +62,6 @@ local function stage()
   local public_targets = {
     [templates .. "/maintenance.html"] = public .. "/maintenance/index.html",
     [templates .. "/need_auth.html"] = public .. "/need_auth.html",
-    [snap.paths.snap .. "/ondemand/apps"] = snap.paths.common .. "/var/www/ondemand/apps/sys"
   }
   for src, target in pairs(public_targets) do
     logger:debug(string.format("Copying public resource %s to %s.", src, target))
@@ -71,18 +72,13 @@ local function stage()
   local apps = snap.paths.common .. "/var/www/ondemand/apps/sys"
   logger:debug(string.format("Copying system applications to %s.", apps))
   fileutil.copy(snap.paths.snap .. "/ondemand/apps", apps)
-  posix.chmod(apps, "rwxr-xr-x")
 end
 
 --- `install` hook for the ondemand snap.
 local function install()
   logger:info("Executing `install` hook.")
   stage()
-
-  logger:info("Generating default `ood-portal.yaml` configuration file.")
   portal:default()
-
-  logger:info("Generating default `nginx-stage.yaml` configuration file.")
   nginx_stage:default()
 end
 

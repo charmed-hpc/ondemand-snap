@@ -13,43 +13,28 @@
 -- limitations under the License.
 
 local snap = require("snap")
-local yaml = require("lyaml")
 
---- Wrapper for `ondemand` portal configuration.
----@class Portal
----@field private file string Location of _ood-portal.yaml_ configuration file.
-local Portal = {}
+local base = require("ondemand.base")
+local logger = require("ondemand.utils.logging")
 
---- Create a new `Portal` configuration wrapper.
----@return Portal
-function Portal.new()
-  local self = {}
-  setmetatable(self, { __index = Portal })
-  self.file = snap.paths.common .. "/etc/ondemand/ood-portal.yaml"
-  return self
-end
+--- Configuration manager for `ondemand` portal (ood-portal.yaml).
+---@class Portal : Base
+local Portal = base.new {
+  file = snap.paths.common .. "/etc/ondemand/ood-portal.yaml"
+}
 
 --- Generate default _ood-portal.yaml_ configuration file for `ondemand`.
 function Portal:default()
-  local fout = io.open(self.file, "w+")
-  assert(fout, string.format("%s: Failed to open portal configuration file.", self.file))
-  fout:write(
-    yaml.dump(
-      { {
-        logroot = snap.paths.common .. "/var/log/ondemand",
-        lua_root = snap.paths.snap .. "/ondemand/mod_ood_proxy/lib",
-        pun_stage_cmd = "sudo " .. snap.paths.snap .. "/ondemand/nginx_stage/sbin/nginx_stage",
-        public_root = snap.paths.common .. "/var/www/ondemand/public",
-        pun_socket_root = snap.paths.common .. "/run/nginx",
-      } }
-    )
+  logger:info("Generating default `ood-portal.yaml` configuration file.")
+  self:dump(
+    { {
+      logroot = snap.paths.common .. "/var/log/ondemand",
+      lua_root = snap.paths.snap .. "/ondemand/mod_ood_proxy/lib",
+      pun_stage_cmd = "sudo " .. snap.paths.snap .. "/ondemand/nginx_stage/sbin/nginx_stage",
+      public_root = snap.paths.common .. "/var/www/ondemand/public",
+      pun_socket_root = snap.paths.common .. "/run/nginx",
+    } }
   )
-  fout:close()
 end
 
---- Update the `ondemand` portal configuration file _ood-portal.yaml_.
-function Portal:update()
-
-end
-
-return Portal:new()
+return Portal

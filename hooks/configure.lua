@@ -13,9 +13,26 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
+local snap = require("snap")
+
+local portal = require("ondemand.portal")
+local nginx_stage = require("ondemand.nginx-stage")
+local logger = require("ondemand.utils.logging")
+
 --- `configure` hook for the ondemand snap.
 local function configure()
+  logger:info("Executing `configure` hook.")
+  local config = snap.config:get_options("portal", "nginx-stage")
 
+  if config["portal"] then
+    logger:info("Updating `ondemand` portal configuration.")
+    portal:update(config["portal"])
+  end
+
+  if config["nginx-stage"] then
+    logger:info("Updating `nginx-stage` configuration.")
+    nginx_stage:update(config["nginx-stage"])
+  end
 end
 
 configure()
