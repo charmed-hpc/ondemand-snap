@@ -14,7 +14,7 @@
 
 name: ondemand
 title: Open OnDemand
-version: "3.1.1"
+version: "3.1.4"
 summary: Open, interactive High-Performance Computing via the web.
 description: >
   Open OnDemand empowers students, researchers, and industry professionals
@@ -29,12 +29,9 @@ confinement: classic
 compression: lzo
 environment:
   # yamllint disable rule:line-length
-  # Need this PATH declaration so that the Python-based
-  # snap hooks can find the embedded Python interpreter with
-  # the necessary dependencies packaged in `site-packages`.
-  PATH: $SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$SNAP/usr/local/bin:$SNAP/usr/local/sbin:$PATH
-  GEM_PATH: $SNAP/gems:$SNAP/usr/lib/ruby/gems:$SNAP/usr/share/rubygems-integration/all/gems:$SNAP/var/lib/gems
-  RUBYLIB: $SNAP/usr/lib/ruby/3.0.0:$SNAP/usr/lib/ruby/gems/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/3.0.0:$SNAP/usr/lib/ruby/vendor_ruby/3.0.0:$SNAP/gems/extensions/x86_64-linux/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/vendor_ruby/3.0.0:$SNAP/var/lib/gems/3.0.0:$SNAP/opt/passenger/lib/ruby/3.0.0
+  PATH: $SNAP/ondemand/gems/bin:$SNAP/passenger/bin:$SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$SNAP/usr/local/bin:$SNAP/usr/local/sbin:$PATH
+  GEM_PATH: $SNAP/ondemand/gems
+  RUBYLIB: $SNAP/usr/lib/ruby/3.0.0:$SNAP/usr/lib/ruby/gems/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/3.0.0:$SNAP/usr/lib/ruby/vendor_ruby/3.0.0:$SNAP/usr/lib/x86_64-linux-gnu/ruby/vendor_ruby/3.0.0
   LUA_PATH: $SNAP/usr/share/lua/5.3/?.lua;$SNAP/usr/share/lua/5.3/?/init.lua;;
   LUA_CPATH: $SNAP/usr/lib/x86_64-linux-gnu/lua/5.3/?.so;$SNAP/usr/lib/lua/5.3/?.so;;
   # yamllint enable rule:line-length
@@ -53,11 +50,263 @@ apps:
     command: sbin/update-ood-portal.wrapper
 
 parts:
+  patch:
+    source: patches/
+    plugin: dump
+    organize:
+      '*': patches/
+    prime:
+      - -*
+
+  overlay:
+    source: overlays/
+    plugin: dump
+    organize:
+      "overlays/conf/*": conf/
+      "overlays/sbin/*": sbin/
+      "overlays/templates/*": templates/
+    prime:
+      - -conf
+
+  hooks:
+    source: hooks/
+    plugin: dump
+    build-attributes: [enable-patchelf]
+    build-packages:
+      - luarocks
+      - lua5.3
+      - liblua5.3-dev
+      - libyaml-dev
+    stage-packages:
+      - lua5.3
+      - liblua5.3-0
+      - libyaml-0-2
+    override-build: |
+      craftctl default
+
+      set -e
+      HOOK_DIR=${CRAFT_PRIME}/meta/hooks
+      mkdir -p ${HOOK_DIR}
+      
+      # Set install location hooks and deps.
+      cat << EOF > /etc/luarocks/config-5.3.lua
+      rocks_trees = {
+        [[${CRAFT_PART_INSTALL}/usr]]
+      }
+      EOF
+
+      # Setup hooks.
+      luarocks install snaphelpers
+      luarocks install lualogging 1.8.2  
+      install -m 0755 install.lua ${HOOK_DIR}/install
+      install -m 0755 configure.lua ${HOOK_DIR}/configure
+      mv ondemand/ ${CRAFT_PART_INSTALL}/usr/share/lua/5.3
+    prime:
+      - -install.lua
+      - -configure.lua
+      - -ondemand
+
+  apache:
+    plugin: nil
+    after: [overlay]
+    build-attributes: [enable-patchelf]
+    build-packages:
+      - autoconf
+      - automake
+      - autopoint
+      - gcc
+      - libtool
+      - libapr1-dev
+      - libaprutil1-dev
+      - libssl-dev
+      - libpcre2-dev
+      - libcjose-dev
+      - libjansson-dev
+      - libcurl4-openssl-dev
+      - libnghttp2-dev
+      - liblua5.3-dev
+    stage-packages:
+      - libapr1-dev  # Provides apr-1-config binary required by `apxs`.
+      - libaprutil1-dev  # Provides apu-1-config binary required by `apxs`.
+      - libssl3
+      - libpcre2-32-0
+      - libcjose0
+      - libjansson4
+      - libcurl4
+      - libnghttp2-14
+    stage:
+      - -httpd/man
+      - -httpd/manual
+      - -httpd/htdocs
+      - -httpd/include
+      - -httpd/build
+      - -httpd/conf/magic
+      - -httpd/conf/original
+      - -httpd/conf/extra
+      - -httpd/bin/apachectl
+      - -httpd/bin/envvars*
+    # yamllint disable rule:line-length
+    override-build: |
+      craftctl default
+      
+      set -e
+      ## Build `httpd` and openidc module.
+      HTTPD_INSTALL_DIR=${CRAFT_PART_INSTALL}/httpd
+
+      # Fetch sources for `httpd` and openidc module from Ubuntu Archive.
+      curl -fsSL -o - \
+        http://archive.ubuntu.com/ubuntu/pool/main/a/apache2/apache2_2.4.58.orig.tar.gz | \
+        tar -xzf -
+      curl -fsSL -o - \
+        http://archive.ubuntu.com/ubuntu/pool/universe/liba/libapache2-mod-auth-openidc/libapache2-mod-auth-openidc_2.4.15.1.orig.tar.gz | \
+        tar -xzf -
+      
+      # Build and install `httpd`.
+      cd httpd-2.4.58 && ./configure \
+        --prefix=${HTTPD_INSTALL_DIR} \
+        --enable-pie \
+        --enable-mpm=event \
+        --enable-modules=none \
+        --enable-mods-static="http log_config logio unixd version watchdog" \
+        --enable-mods-shared="access_compat alias auth_basic authn_core authn_file authz_core authz_host authz_user autoindex deflate dir env filter headers lua mime negotiation proxy proxy_http proxy_wstunnel reqtimeout rewrite setenvif ssl status"
+      make -j${CRAFT_PARALLEL_BUILD_COUNT} && make install && cd ..
+      
+      # Build and install openidc module.
+      cd mod_auth_openidc-2.4.15.1 && ./autogen.sh && ./configure \
+        --prefix=${HTTPD_INSTALL_DIR} \
+        --with-apxs=${HTTPD_INSTALL_DIR}/bin/apxs \
+        CPPFLAGS="-I/${HTTPD_INSTALL_DIR}/include"
+      make -j${CRAFT_PARALLEL_BUILD_COUNT} && make install && cd ..
+
+      # Copy in `httpd.conf` overlay.
+      cp ${CRAFT_STAGE}/conf/httpd.conf ${HTTPD_INSTALL_DIR}/conf/httpd.conf
+    # yamllint enable rule:line-length
+
+  nginx-passenger:
+    plugin: nil
+    after: [patch]
+    build-attributes: [enable-patchelf]
+    build-packages:
+      - libcurl4-openssl-dev
+      - libssl-dev
+      - zlib1g-dev
+      - libpcre2-dev
+      - libxslt1-dev
+      - libgd-dev
+      - libev-dev
+      - libuv1-dev
+      - wget
+      - ruby
+      - ruby-dev
+      - ruby-rack
+      - ruby-bundler
+      - rake
+    stage-packages:
+      - openssl
+      - zlib1g
+      - libpcre2-8-0
+      - libxslt1.1
+      - libgd3
+      - libev4
+      - libuv1
+      - ruby
+      - ruby-rack
+      - ruby-bundler
+      - rake
+    # yamllint disable rule:line-length
+    override-build: |
+      craftctl default
+
+      set -e
+      ## Build  `nginx` + `passenger`.
+      SNAP_COMMON=/var/snap/${SNAPCRAFT_PROJECT_NAME}/common
+      RUBYDIR=${CRAFT_PART_INSTALL}/usr/lib/ruby
+      PASSENGER_BUILD_DIR=${CRAFT_PART_INSTALL}/passenger
+      NGINX_BUILD_DIR=${CRAFT_PART_BUILD}/nginx
+      export LD_LIBRARY_PATH=${CRAFT_PART_INSTALL}/lib:${CRAFT_PART_INSTALL}/usr/lib/${CRAFT_ARCH_TRIPLET_BUILD_ON}
+      export GEM_HOME=${RUBYDIR}/gems/3.0.0
+
+      # Fetch sources for `nginx` + `passenger` from Ubuntu Archive.
+      mkdir -p ${PASSENGER_BUILD_DIR}
+      curl -fsSL -o - \
+        http://archive.ubuntu.com/ubuntu/pool/universe/p/passenger/passenger_6.0.10.orig.tar.gz | \
+        tar -xzf - -C ${PASSENGER_BUILD_DIR} --strip 1
+      mkdir -p ${NGINX_BUILD_DIR}
+      curl -fsSL -o - \
+        http://archive.ubuntu.com/ubuntu/pool/main/n/nginx/nginx_1.24.0.orig.tar.gz | \
+        tar -xzf - -C ${NGINX_BUILD_DIR} --strip 1
+
+      # Apply patches to `passenger`.
+      cd ${PASSENGER_BUILD_DIR}
+      for patch in ${CRAFT_STAGE}/patches/passenger/*.patch; do
+        echo "Applying $(basename "$patch") ..."
+        patch \
+          --batch \
+          --forward \
+          --strip 1 \
+          --input "$patch"
+        echo
+      done
+      cd ..
+
+      # Build `nginx` + `passenger` using the passenger installation script.
+      ${PASSENGER_BUILD_DIR}/bin/passenger-install-nginx-module \
+        --auto \
+        --languages=ruby,python,nodejs \
+        --nginx-source-dir=${NGINX_BUILD_DIR} \
+        --prefix=${CRAFT_PART_INSTALL}/nginx \
+        --extra-configure-flags="\
+          --http-log-path=${SNAP_COMMON}/var/log/nginx/access.log \
+          --error-log-path=${SNAP_COMMON}/var/log/nginx/error.log \
+          --lock-path=${SNAP_COMMON}/run/locks/nginx.lock \
+          --pid-path=${SNAP_COMMON}/run/nginx.pid \
+          --http-client-body-temp-path=${SNAP_COMMON}/var/lib/nginx_client_body \
+          --http-proxy-temp-path=${SNAP_COMMON}/var/lib/nginx_proxy \
+          --http-fastcgi-temp-path=${SNAP_COMMON}/var/lib/nginx_fastcgi \
+          --http-uwsgi-temp-path=${SNAP_COMMON}/var/lib/nginx_uwsgi \
+          --http-scgi-temp-path=${SNAP_COMMON}/var/lib/nginx_scgi \
+          --user=snap_daemon \
+          --group=snap_daemon \
+          --with-file-aio \
+          --with-http_ssl_module \
+          --with-http_v2_module \
+          --with-http_realip_module \
+          --with-http_addition_module \
+          --with-http_xslt_module \
+          --with-http_image_filter_module \
+          --with-http_sub_module \
+          --with-http_dav_module \
+          --with-http_flv_module \
+          --with-http_mp4_module \
+          --with-http_gunzip_module \
+          --with-http_gzip_static_module \
+          --with-http_random_index_module \
+          --with-http_secure_link_module \
+          --with-http_degradation_module \
+          --with-http_stub_status_module \
+          --with-mail \
+          --with-mail_ssl_module \
+          --with-pcre \
+          --with-pcre-jit"
+    # yamllint enable rule:line-length
+
+  # Replace `update_ood_portal` with `generate-ood-portal` binary.
+  #
+  # `generate-ood-portal` renders an apache2 configuration file
+  # for the Open OnDemand portal using `ood_portal.yml`.
+  # `generate-ood-portal` is "simpler" than `update_ood_portal`
+  # as it just renders an apache2 configuration file. It should
+  # be considered a lower-level utility compared to `update_ood_portal`
+  ood-portal-generator:
+    source: "https://github.com/charmed-hpc/ood-portal-generator.git"
+    plugin: go
+    build-snaps:
+      - go/1.22/stable
+
   ondemand:
     source: "https://github.com/osc/ondemand.git"
     source-tag: v${SNAPCRAFT_PROJECT_VERSION}
     plugin: nil
-    after: [apache, passenger-nginx]
     build-attributes: [enable-patchelf]
     build-packages:
       - build-essential
@@ -73,263 +322,68 @@ parts:
       - python3
       - ruby
       - ruby-dev
-      - ruby-bundler
       - rake
     build-snaps:
       - node/20/stable
     stage-packages:
       - file
-      - lua-posix
       - lsof
       - ruby
     stage-snaps:
       - node/20/stable
     stage:
-      - -nginx_stage/share/nginx_stage_example.yml
-      - -ood-portal-generator  # Replaced by `gen-ood-portal`.
+      - -ondemand/nginx_stage/share/nginx_stage_example.yml
+      - -ondemand/ood-portal-generator  # Replaced by `generate-ood-portal`.
+    # yamllint disable rule:line-length
     override-build: |
       craftctl default
 
       set -e
-      # Set installation location for Ruby gems required by Open OnDemand.
-      export GEM_HOME=${CRAFT_PART_INSTALL}/gems
+      ONDEMAND_INSTALL_DIR=${CRAFT_PART_INSTALL}/ondemand
+      # Set installation location for Ruby gems required by `ondemand`.
+      export GEM_HOME=${ONDEMAND_INSTALL_DIR}/gems
 
-      # Build Open OnDemand using `rake` and `bundle`
+      # Build `ondemand` using `rake` and `bundle`
       BUNDLE_WITHOUT='test package' bundle install
-      rake --trace -mj$(nproc) build
+      rake --trace -mj${CRAFT_PARALLEL_BUILD_COUNT} build
       rm -rf ${GEM_HOME}/cache
       rm -rf apps/*/node_modules/.cache
 
-      # Install Open OnDemand.
-      PREFIX=${CRAFT_PART_INSTALL} rake --trace install
+      # Install `ondemand`.
+      PREFIX=${ONDEMAND_INSTALL_DIR} rake --trace install
       
-      # Create `VERSION` file required by several Open OnDemand utilities.
-      echo ${SNAPCRAFT_PROJECT_VERSION} > ${CRAFT_PART_INSTALL}/VERSION
+      # Create `VERSION` file from the project version. The `VERSION` file is required
+      # by a couple of `ondemand` utilities such as `nginx_stage`.
+      echo ${SNAPCRAFT_PROJECT_VERSION} > ${ONDEMAND_INSTALL_DIR}/VERSION
 
-  apache:
-    # yamllint disable-line rule:line-length
-    plugin: nil
-    build-attributes: [enable-patchelf]
-    build-packages:
-      - autoconf
-      - automake
-      - autopoint
-      - gcc
-      - libtool
-      - libapr1-dev
-      - libaprutil1-dev
-      - libssl-dev
-      - libpcre3-dev
-      - libcjose-dev
-      - libjansson-dev
-      - libcurl4-openssl-dev
-      - libnghttp2-dev
-      - liblua5.3-dev
-    stage-packages:
-      - libapr1-dev  # Provides apr-1-config binary required by `apxs`.
-      - libaprutil1-dev  # Provides apu-1-config binary required by `apxs`.
-      - libssl3
-      - libpcre3
-      - libcjose0
-      - libjansson4
-      - libcurl4
-      - libnghttp2-14
-      - liblua5.3-0
-    stage:
-      - -man
-      - -manual
-      - -htdocs
-      - -include
-      - -build
-      - -conf/httpd.conf
-      - -conf/magic
-      - -conf/original
-      - -conf/extra
-      - -bin/apachectl
-      - -bin/envvars*
-    # yamllint disable rule:line-length
-    override-build: |
-      craftctl default
+      # Add required environment variables to `nginx_stage` profile.
+      # $SNAP_* env vars will not be propagated to `nginx_stage` due
+      # to how the utility is invoked by `httpd`, so we must hardcode
+      # the required env vars in.
+      cat << 'EOF' > ${ONDEMAND_INSTALL_DIR}/nginx_stage/etc/profile
+      export SNAP=/snap/ondemand/current
+      export SNAP_COMMON=/var/snap/ondemand/common
       
-      set -e
-      # Build and install `apache2`.
-      curl -fsSL -o - \
-        http://archive.ubuntu.com/ubuntu/pool/main/a/apache2/apache2_2.4.58.orig.tar.gz | \
-        tar -xzf -
-      cd httpd-2.4.58 && ./configure \
-        --prefix=${CRAFT_PART_INSTALL} \
-        --enable-pie \
-        --enable-mpm=event \
-        --enable-modules=none \
-        --enable-mods-static="http log_config logio unixd version watchdog" \
-        --enable-mods-shared="access_compat alias auth_basic authn_core authn_file authz_core authz_host authz_user autoindex deflate dir env filter headers lua mime negotiation proxy proxy_http proxy_wstunnel reqtimeout rewrite setenvif ssl status"
-      make -j${CRAFT_PARALLEL_BUILD_COUNT} && make install && cd ..
-      
-      # Build and install `apache2` OpenIDC module.
-      curl -fsSL -o - \
-        http://archive.ubuntu.com/ubuntu/pool/universe/liba/libapache2-mod-auth-openidc/libapache2-mod-auth-openidc_2.4.15.1.orig.tar.gz | \
-        tar -xzf -
-      cd mod_auth_openidc-2.4.15.1 && ./autogen.sh && ./configure \
-        --prefix=${CRAFT_PART_INSTALL} \
-        --with-apxs=${CRAFT_PART_INSTALL}/bin/apxs
-      make -j${CRAFT_PARALLEL_BUILD_COUNT} && make install && cd ..
+      export PATH=${SNAP}/ondemand/gems/bin:${SNAP}/passenger/bin:${SNAP}/usr/bin:${SNAP}/sbin:${SNAP}/bin:${PATH}
+      export GEM_PATH=${SNAP}/ondemand/gems
+      export RUBYLIB=$SNAP/usr/lib/ruby/3.0.0:$SNAP/usr/lib/ruby/gems/3.0.0:$SNAP/usr/lib/$(uname -p)-linux-gnu/ruby/3.0.0:$SNAP/usr/lib/ruby/vendor_ruby/3.0.0:$SNAP/usr/lib/$(uname -p)-linux-gnu/ruby/vendor_ruby/3.0.0
+      export NGINX_STAGE_CONFIG_FILE=${SNAP_COMMON}/etc/ondemand/nginx-stage.yaml
+      EOF
     # yamllint enable rule:line-length
 
-  passenger-nginx:
+  cleanup:
     plugin: nil
-    after: [apache]
-    build-attributes: [enable-patchelf]
-    build-packages:
-      - libcurl4-openssl-dev
-      - libssl-dev
-      - zlib1g-dev
-      - libpcre3-dev
-      - libxslt1-dev
-      - libgd-dev
-      - libev-dev
-      - libuv1-dev
-      - wget
-      - ruby
-      - ruby-dev
-      - ruby-rack
-      - rake
-    stage-packages:
-      - openssl
-      - zlib1g
-      - libpcre3
-      - libxslt1.1
-      - libgd3
-      - libev4
-      - libuv1
-      - ruby
-      - ruby-rack
-    stage:
-      - -opt/passenger/lib/apache2
-    # yamllint disable rule:line-length
-    override-build: |
+    after: [nginx-passenger, ondemand]
+    override-prime: |
       craftctl default
 
       set -e
-      # Constants for building `passenger` and `nginx` from source.
-      if [[ "${CRAFT_ARCH_BUILD_ON}" == "arm64" ]]; then
-        export MFLAG="-march=armv8-a"
-      else
-        export MFLAG="-m64"
-      fi
-
-      if [[ "${CRAFT_ARCH_BUILD_ON}" == "ppc64el" ]]; then
-        export MTUNE="-mcpu=powerpc64le"
-      else
-        export MTUNE="-mtune=generic"
-      fi
-
-      export SNAP_COMMON=/var/snap/${SNAPCRAFT_PROJECT_NAME}/common
-      export BASE_CCOPTS="-g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong --param=ssp-buffer-size=4 -grecord-gcc-switches ${MFLAG} ${MTUNE}"
-      export NGINX_CCOPTS="-O2 ${BASE_CCOPTS}"
-      export PASSENGER_CCOPTS="${BASE_CCOPTS} -Wno-deprecated"
-      export LDOPTS="-Wl,-z -Wl,-E"
-      
-      curl -fsSL -o - \
-        http://archive.ubuntu.com/ubuntu/pool/universe/p/passenger/passenger_6.0.10.orig.tar.gz | \
-        tar -xzf -
-      cd passenger-6.0.10
-      curl -fsSL -o - \
-        http://archive.ubuntu.com/ubuntu/pool/main/n/nginx/nginx_1.24.0.orig.tar.gz | \
-        tar -xzf -
-
-      # Enable `passenger` nginx integration.
-      rake nginx \
-        OPTIMIZE=yes \
-        CACHING=false
-
-      # Build and install custom nginx with `passenger` integration.
-      cd nginx-1.24.0 && ./configure \
-        --prefix=${CRAFT_PART_INSTALL}/opt/nginx \
-        --http-log-path=${SNAP_COMMON}/var/log/nginx/access.log \
-        --error-log-path=${SNAP_COMMON}/var/log/nginx/error.log \
-        --lock-path=${SNAP_COMMON}/run/locks/nginx.lock \
-        --pid-path=${SNAP_COMMON}/run/nginx.pid \
-        --http-client-body-temp-path=${SNAP_COMMON}/var/lib/nginx_client_body \
-        --http-proxy-temp-path=${SNAP_COMMON}/var/lib/nginx_proxy \
-        --http-fastcgi-temp-path=${SNAP_COMMON}/var/lib/nginx_fastcgi \
-        --http-uwsgi-temp-path=${SNAP_COMMON}/var/lib/nginx_uwsgi \
-        --http-scgi-temp-path=${SNAP_COMMON}/var/lib/nginx_scgi \
-        --user=_daemon_ \
-        --group=_daemon_ \
-        --with-file-aio \
-        --with-http_ssl_module \
-        --with-http_v2_module \
-        --with-http_realip_module \
-        --with-http_addition_module \
-        --with-http_xslt_module \
-        --with-http_image_filter_module \
-        --with-http_sub_module \
-        --with-http_dav_module \
-        --with-http_flv_module \
-        --with-http_mp4_module \
-        --with-http_gunzip_module \
-        --with-http_gzip_static_module \
-        --with-http_random_index_module \
-        --with-http_secure_link_module \
-        --with-http_degradation_module \
-        --with-http_stub_status_module \
-        --with-mail \
-        --with-mail_ssl_module \
-        --with-pcre \
-        --with-pcre-jit \
-        --add-module=../src/nginx_module \
-        --with-cc-opt="${NGINX_CCOPTS}" \
-        --with-ld-opt="${LDOPTS}"
-      make -j${CRAFT_PARALLEL_BUILD_COUNT} && make install && cd ..
-
-      # Build and install `passenger`.
-      export CPATH=${CRAFT_STAGE}/include
-      export APXS2=${CRAFT_STAGE}/bin/apxs
-      rake fakeroot \
-        FS_PREFIX="" \
-        OPTIMIZE=yes \
-        CACHING=false \
-        EXTRA_CFLAGS="${PASSENGER_CCOPTS}" \
-        EXTRA_CXXFLAGS="${PASSENGER_CCOPTS}"
-      
-      # Copy `passenger` to target location.
-      mkdir -p ${CRAFT_PART_INSTALL}/opt/passenger
-      cp -a pkg/fakeroot/* ${CRAFT_PART_INSTALL}/opt/passenger
-    # yamllint enable rule:line-length
-
-  ondemand-overlay:
-    source: overlays
-    plugin: dump
-    organize:
-      "overlays/conf/*": conf/
-      "overlays/sbin/*": sbin/
-      "overlays/templates/*": templates/
-
-  # Replace `update_ood_portal` with `generate-ood-portal` binary.
-  #
-  # `generate-ood-portal` renders an apache2 configuration file
-  # for the Open OnDemand portal using `ood_portal.yml`.
-  # `generate-ood-portal` is "simpler" than `update_ood_portal`
-  # as it just renders an apache2 configuration file. It should
-  # be considered a lower-level utility compared to `update_ood_portal`
-  ood-portal-generator:
-    source: "https://github.com/charmed-hpc/ood-portal-generator.git"
-    plugin: go
-    build-snaps:
-      - go/1.22/stable
-
-  snap-hooks:
-    source: .
-    plugin: python
-    build-attributes: [enable-patchelf]
-    python-requirements: [requirements.txt]
-    build-packages:
-      - python3-setuptools
-    stage-packages:
-      - libpython3.10-stdlib
-      - libpython3.10-minimal
-      - python3-venv
-      - python3.10-minimal
-    override-build: |
-      craftctl default
-      snap-helpers write-hooks
+      # Purge `bundler` brought in by the `libruby` package. 
+      #
+      # If left within the snap, Passenger will attempt to use this bundler 
+      # rather than the bundler version set in `Gemfile.lock` for each of the 
+      # interactive apps. This is will cause Passenger to bork as the bundler 
+      # version the apps will activate is not what Passenger expects.
+      rm -rf usr/lib/ruby/gems/3.0.0/specifications/default/bundler-2.2.22.gemspec
+      rm -rf usr/lib/ruby/gems/3.0.0/gems/bundler-2.2.22
+      rm -rf usr/lib/ruby/3.0.0/bundler
