@@ -24,9 +24,10 @@ license: MIT
 website: "https://openondemand.org"
 
 base: core22
-grade: devel
+grade: stable
 confinement: classic
 compression: lzo
+architectures: [amd64, arm64, ppc64el, s390x]
 environment:
   # yamllint disable rule:line-length
   PATH: $SNAP/ondemand/gems/bin:$SNAP/passenger/bin:$SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$SNAP/usr/local/bin:$SNAP/usr/local/sbin:$PATH
@@ -87,7 +88,7 @@ parts:
       set -e
       HOOK_DIR=${CRAFT_PRIME}/meta/hooks
       mkdir -p ${HOOK_DIR}
-      
+
       # Set install location hooks and deps.
       cat << EOF > /etc/luarocks/config-5.3.lua
       rocks_trees = {
@@ -97,7 +98,7 @@ parts:
 
       # Setup hooks.
       luarocks install snaphelpers
-      luarocks install lualogging 1.8.2  
+      luarocks install lualogging 1.8.2
       install -m 0755 install.lua ${HOOK_DIR}/install
       install -m 0755 configure.lua ${HOOK_DIR}/configure
       mv ondemand/ ${CRAFT_PART_INSTALL}/usr/share/lua/5.3
@@ -148,7 +149,7 @@ parts:
     # yamllint disable rule:line-length
     override-build: |
       craftctl default
-      
+
       set -e
       ## Build `httpd` and openidc module.
       HTTPD_INSTALL_DIR=${CRAFT_PART_INSTALL}/httpd
@@ -160,7 +161,7 @@ parts:
       curl -fsSL -o - \
         http://archive.ubuntu.com/ubuntu/pool/universe/liba/libapache2-mod-auth-openidc/libapache2-mod-auth-openidc_2.4.15.1.orig.tar.gz | \
         tar -xzf -
-      
+
       # Build and install `httpd`.
       cd httpd-2.4.58 && ./configure \
         --prefix=${HTTPD_INSTALL_DIR} \
@@ -170,7 +171,7 @@ parts:
         --enable-mods-static="http log_config logio unixd version watchdog" \
         --enable-mods-shared="access_compat alias auth_basic authn_core authn_file authz_core authz_host authz_user autoindex deflate dir env filter headers lua mime negotiation proxy proxy_http proxy_wstunnel reqtimeout rewrite setenvif ssl status"
       make -j${CRAFT_PARALLEL_BUILD_COUNT} && make install && cd ..
-      
+
       # Build and install openidc module.
       cd mod_auth_openidc-2.4.15.1 && ./autogen.sh && ./configure \
         --prefix=${HTTPD_INSTALL_DIR} \
@@ -351,7 +352,7 @@ parts:
 
       # Install `ondemand`.
       PREFIX=${ONDEMAND_INSTALL_DIR} rake --trace install
-      
+
       # Create `VERSION` file from the project version. The `VERSION` file is required
       # by a couple of `ondemand` utilities such as `nginx_stage`.
       echo ${SNAPCRAFT_PROJECT_VERSION} > ${ONDEMAND_INSTALL_DIR}/VERSION
@@ -363,7 +364,7 @@ parts:
       cat << 'EOF' > ${ONDEMAND_INSTALL_DIR}/nginx_stage/etc/profile
       export SNAP=/snap/ondemand/current
       export SNAP_COMMON=/var/snap/ondemand/common
-      
+
       export PATH=${SNAP}/ondemand/gems/bin:${SNAP}/passenger/bin:${SNAP}/usr/bin:${SNAP}/sbin:${SNAP}/bin:${PATH}
       export GEM_PATH=${SNAP}/ondemand/gems
       export RUBYLIB=$SNAP/usr/lib/ruby/3.0.0:$SNAP/usr/lib/ruby/gems/3.0.0:$SNAP/usr/lib/$(uname -p)-linux-gnu/ruby/3.0.0:$SNAP/usr/lib/ruby/vendor_ruby/3.0.0:$SNAP/usr/lib/$(uname -p)-linux-gnu/ruby/vendor_ruby/3.0.0
@@ -378,11 +379,11 @@ parts:
       craftctl default
 
       set -e
-      # Purge `bundler` brought in by the `libruby` package. 
+      # Purge `bundler` brought in by the `libruby` package.
       #
-      # If left within the snap, Passenger will attempt to use this bundler 
-      # rather than the bundler version set in `Gemfile.lock` for each of the 
-      # interactive apps. This is will cause Passenger to bork as the bundler 
+      # If left within the snap, Passenger will attempt to use this bundler
+      # rather than the bundler version set in `Gemfile.lock` for each of the
+      # interactive apps. This is will cause Passenger to bork as the bundler
       # version the apps will activate is not what Passenger expects.
       rm -rf usr/lib/ruby/gems/3.0.0/specifications/default/bundler-2.2.22.gemspec
       rm -rf usr/lib/ruby/gems/3.0.0/gems/bundler-2.2.22
